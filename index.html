@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Automatic Photo Framer</title>
+    <!-- JSZip handles creating the downloadable zip file directly in the browser -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <style>
+        body { font-family: system-ui, -apple-system, sans-serif; background-color: #f3f4f6; margin: 0; padding: 40px; display: flex; justify-content: center; }
+        .card { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); width: 100%; max-width: 400px; }
+        h2 { margin: 0 0 20px 0; color: #1f2937; text-align: center; }
+        .group { margin-bottom: 20px; }
+        label { display: block; margin-bottom: 8px; font-weight: 600; color: #4b5563; }
+        input[type="file"] { width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 6px; box-sizing: border-box; }
+        button { width: 100%; padding: 12px; background-color: #10b981; color: white; border: none; border-radius: 6px; font-size: 16px; font-weight: bold; cursor: pointer; transition: background 0.2s; }
+        button:hover { background-color: #059669; }
+        .status { margin-top: 15px; font-size: 14px; text-align: center; color: #6b7280; display: none; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <h2>Photo Framer Studio</h2>
+    
+    <div class="group">
+        <label>1. Upload Your Photo</label>
+        <input type="file" id="photoInput" accept="image/*">
+    </div>
+    
+    <div class="group">
+        <label>2. Upload Frame Overlay (.png)</label>
+        <input type="file" id="frameInput" accept="image/png">
+    </div>
+    
+    <button onclick="generateFramedPhoto()">Generate & Download ZIP</button>
+    <div id="statusText" class="status"></div>
+</div>
+
+<script>
+async function loadImage(file) {
+    return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const img = new Image();
+            img.onload = () => resolve(img);
+            img.src = e.target.result;
+        };
+        reader.readAsDataURL(file);
+    });
+}
+
+async function generateFramedPhoto() {
+    const photoFile = document.getElementById('photoInput').files[0];
+    const frameFile = document.getElementById('frameInput').files[0];
+    const statusText = document.getElementById('statusText');
+    
+    if (!photoFile || !frameFile) {
+        alert("Please select both a photo and a frame template!");
+        return;
+    }
+    
+    statusText.style.display = "block";
+    statusText.innerText = "Processing images locally...";
+    
+    // 1. Load both images into the browser window memory
+    const photoImg = await loadImage(photoFile);
+    const frameImg = await loadImage(frameFile);
+    
+    // 2. Setup an off-screen HTML5 canvas matching the exact size of the frame
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    canvas.width = frameImg.width;
+    canvas.height = frameImg.height;
+    
+    // 3. Scale the uploaded photo to fit inside the frame space proportionally
+    const scale = Math.min(canvas.width / photoImg.width, canvas.height / photoImg.height);
+    const photoW = photoImg.width * scale;
+    const photoH = photoImg.height * scale;
+    
+    // 4. Center coordinates
+    const pasteX = (canvas.width - photoW) / 2;
+    const pasteY = (canvas.height - photoH) / 2;
+    
+    // 5. Paint operations: Photo goes first (bottom layer), Frame covers it (top layer)
+    ctx.drawImage(photoImg, pasteX, pasteY, photoW, photoH);
+    ctx.drawImage(frameImg, 0, 0, canvas.width, canvas.height);
+    
+    // 6. Convert the finished canvas drawing into raw JPEG base64 data strings
+    canvas.toBlob(async function(blob) {
+        statusText.innerText = "Packing into ZIP file...";
+        
+        // 7. Initialize JSZip and pack the image file inside it
+        const zip = new JSZip();
+        zip.file("framed-photo.jpg", blob);
+        
+        // 8. Generate the zip structure as a file download link and click it automatically
+        const zipContent = await zip.generateAsync({type: "blob"});
+        const downloadUrl = URL.createObjectURL(zipContent);
+        
+        const link = document.createElement('a');
+        link.href = downloadUrl;
+        link.download = "framed_photos.zip";
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        statusText.innerText = "Done! Download started.";
+    }, "image/jpeg", 0.95);
+}
+</script>
+
+</body>
+</html>
